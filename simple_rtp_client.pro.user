@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE QtCreatorProject>
-<!-- Written by QtCreator 4.13.0, 2020-11-07T18:45:32. -->
+<!-- Written by QtCreator 4.13.0, 2020-11-19T10:22:58. -->
 <qtcreator>
  <data>
   <variable>EnvironmentId</variable>
@@ -325,7 +325,7 @@
     <valuelist type="QVariantList" key="PE.EnvironmentAspect.Changes"/>
     <value type="QString" key="ProjectExplorer.ProjectConfiguration.Id">Qt4ProjectManager.Qt4RunConfiguration:/home/simba9/disertion/simple_rtp_client/simple_rtp_client.pro</value>
     <value type="QString" key="ProjectExplorer.RunConfiguration.BuildKey">/home/simba9/disertion/simple_rtp_client/simple_rtp_client.pro</value>
-    <value type="QString" key="RunConfiguration.Arguments"></value>
+    <value type="QString" key="RunConfiguration.Arguments">-v</value>
     <value type="bool" key="RunConfiguration.Arguments.multi">false</value>
     <value type="QString" key="RunConfiguration.OverrideDebuggerStartup"></value>
     <value type="bool" key="RunConfiguration.UseCppDebugger">false</value>
