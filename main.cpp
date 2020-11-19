@@ -12,10 +12,10 @@ using namespace std;
  *  receives H264 encoded RTP video on port 5000, RTCP is received on  port 5001.
  *  the receiver RTCP reports are sent to port 5005
  *
- *             .-------.      .----------.     .---------.   .-------.   .-----------.
- *  RTP        |udpsrc |      | rtpbin   |     |h264depay|   |h264dec|   |xvimagesink|
- *  port=5000  |      src->recv_rtp recv_rtp->sink     src->sink   src->sink         |
- *             '-------'      |          |     '---------'   '-------'   '-----------'
+ *             .-------.      .----------.     .---------.   .-------.   .------------.   .-----------.
+ *  RTP        |udpsrc |      | rtpbin   |     |h264depay|   |h264dec|   |videoconvert|   |xvimagesink|
+ *  port=5000  |      src->recv_rtp recv_rtp->sink     src->sink   src->sink        src->sink         |
+ *             '-------'      |          |     '---------'   '-------'   '------------'   '-----------'
  *                            |          |
  *                            |          |     .-------.
  *                            |          |     |udpsink|  RTCP
@@ -122,7 +122,7 @@ bool linkStaticAndRequestPads(GstElement *sourse,GstElement *sink,gchar *nameSrc
     GstPadLinkReturn ret_link = gst_pad_link(srcPad,sinkPad);
     if (ret_link != GST_PAD_LINK_OK)
     {
-        cerr << "Error create link, beetwen recvRtpSinkPad and udpSrcRtpPad\n";
+        cerr << "Error create link, static and request pad\n";
         return false;
     }
     gst_object_unref(GST_OBJECT(srcPad));
@@ -137,7 +137,7 @@ bool linkRequestAndStaticPads(GstElement *sourse,GstElement *sink,gchar *nameSrc
     GstPadLinkReturn ret_link = gst_pad_link(srcPad,sinkPad);
     if (ret_link != GST_PAD_LINK_OK)
     {
-        cerr << "Error create link, beetwen recvRtpSinkPad and udpSrcRtpPad\n";
+        cerr << "Error create link, request and statitc pad\n";
         return false;
     }
     gst_object_unref(GST_OBJECT(srcPad));
