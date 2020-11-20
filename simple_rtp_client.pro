@@ -1,7 +1,7 @@
 TEMPLATE = app
-CONFIG += console c++11
 CONFIG -= app_bundle
 CONFIG -= qt
+CONFIG += console c++17
 
 SOURCES += \
         main.cpp
@@ -21,3 +21,6 @@ unix: PKGCONFIG += /usr/lib/x86_64-linux-gnu/pkgconfig/gstreamer-1.0.pc
 unix: PKGCONFIG += /usr/lib/x86_64-linux-gnu/pkgconfig/gstreamer-plugins-base-1.0.pc
 unix: PKGCONFIG += /usr/lib/x86_64-linux-gnu/pkgconfig/gstreamer-plugins-good-1.0.pc
 unix: PKGCONFIG += /usr/lib/x86_64-linux-gnu/pkgconfig/gstreamer-rtp-1.0.pc
+
+HEADERS += \
+    circular_buffer.h

@@ -3,7 +3,10 @@
 
 #include <gst/rtp/rtp.h>
 #include <sys/time.h>
-#include <unistd.h>
+#include <queue>
+#include "circular_buffer.h"
+#include <thread>
+#include <utility>
 using namespace std;
 
 /*
@@ -25,6 +28,8 @@ using namespace std;
  *  port=5001  |     src->recv_rtcp      |
  *             '-------'      '----------'
  */
+
+
 
 static gboolean bus_call (GstBus     *bus,
                          GstMessage *msg,
@@ -147,33 +152,43 @@ bool linkRequestAndStaticPads(GstElement *sourse,GstElement *sink,gchar *nameSrc
 
 
 GstPadProbeReturn cb_read_time_from_rtp_pakcet (GstPad *pad,
-                                               GstPadProbeInfo *info,gpointer *user_data)
+                                               GstPadProbeInfo *info,gpointer data)
 {
 
-
-
+    circular_buffer<pair<long long,long long>> *rtpTimeBuffer = (circular_buffer<pair<long long,long long>> *)data;
     GstBuffer *buffer;
     buffer = GST_PAD_PROBE_INFO_BUFFER (info);
     if (buffer == NULL)
         return GST_PAD_PROBE_OK;
 
-    gpointer nsec;
-    gpointer sec;
+
+    gpointer miliSec;
     guint size = 8;
     GstRTPBuffer rtpBufer = GST_RTP_BUFFER_INIT;
     gst_rtp_buffer_map(buffer,GST_MAP_READ,&rtpBufer);
-    // Получаю метки которые засунул на сервере.
-    gst_rtp_buffer_get_extension_twobytes_header(&rtpBufer,0,1,0,&nsec,&size);
-    gst_rtp_buffer_get_extension_twobytes_header(&rtpBufer,0,2,0,&sec,&size);
-    std::cout << "RECV time, sec: " << *((long *)sec) << " " << "nanosec: " << *((long *)nsec) <<  std::endl;
+    // Получаю метку, которые засунул на сервере. милисекунды.
+    gst_rtp_buffer_get_extension_twobytes_header(&rtpBufer,0,1,0,&miliSec,&size);
+    //rtpRecvTime->push(*((long long *)miliSec));
+    std::chrono::time_point<std::chrono::system_clock> now = std::chrono::system_clock::now();
+    auto duration = now.time_since_epoch();
+    auto recvTime = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count(); //Milisec
+    if (miliSec != 0){
+
+        long long sendTime = *((long long *)miliSec); //Milisec
+        rtpTimeBuffer->put({recvTime,sendTime});// сначала время приема, потом время отправления.
+    }
+
+    //cerr << "RECV time, milisec: " << *((long long *)miliSec) << '\n';
+
 
     gst_rtp_buffer_unmap(&rtpBufer);
     return GST_PAD_PROBE_OK;
 }
 
 
-GstElement *create_pipeline(){
+GstElement *create_pipeline(circular_buffer<pair<long long,long long>> &buffer){
 
+    //queue<long long> rtpRecvTime;
     GstElement *pipeline,*udpSrcRtp,*videconverter,
         *x264decoder,*rtph264depay,*xvimagesink,
         *rtpbin,*udpSrcRtcp,*udpSinkRtcp;
@@ -270,7 +285,7 @@ GstElement *create_pipeline(){
 
     // Подключаю обработку ПЭДа, для получение временной метки.
     GstPad *rtph264depayPad = gst_element_get_static_pad(rtph264depay,"sink");
-    gst_pad_add_probe(rtph264depayPad,GST_PAD_PROBE_TYPE_BUFFER, (GstPadProbeCallback)cb_read_time_from_rtp_pakcet,NULL,NULL);
+    gst_pad_add_probe(rtph264depayPad,GST_PAD_PROBE_TYPE_BUFFER, (GstPadProbeCallback)cb_read_time_from_rtp_pakcet,&buffer,NULL);
     gst_object_unref(GST_OBJECT(rtph264depayPad));
 
 
@@ -279,17 +294,44 @@ GstElement *create_pipeline(){
     return pipeline;
 
 }
+void estimateTime(circular_buffer<pair<long long,long long>> &buffer)
+{
+    queue<pair<long long,long long>> rtpRecvTimeQueue; // Последние 2 временных метки
+    while (true) {
+        if (!buffer.empty())
+        {
+            cerr << "Buffer size is: " << buffer.size() << '\n';
+
+            if (rtpRecvTimeQueue.size() == 2)
+            {
+                // Обработка
+                pair<long long,long long> oldTime = rtpRecvTimeQueue.front();
+                rtpRecvTimeQueue.pop();
+                pair<long long,long long> newTime = rtpRecvTimeQueue.front();
+                long long diff = newTime.first - oldTime.first - (newTime.second - oldTime.second);
+                cerr <<"GCC d_i is: " <<  diff << '\n';
+
+            }
+            rtpRecvTimeQueue.push(buffer.get());
+
+        }
+    }
+}
 int main(int argc, char *argv[])
 {
 
     gst_init(&argc, &argv);
     //  GST_LEVEL_DEBUG;
+    circular_buffer<pair<long long,long long>> circle(10);
+    //  circle.put(1);
+    thread callbackMechanismTh(estimateTime,ref(circle));
 
+    callbackMechanismTh.detach();
     GMainLoop *loop;
     loop = g_main_loop_new(NULL,FALSE);
     GstBus *bus;
 
-    GstElement *pipeline = create_pipeline();
+    GstElement *pipeline = create_pipeline(circle);
     if (pipeline == NULL)
     {
         cerr << "Error create pipeline!" << endl;
@@ -310,6 +352,7 @@ int main(int argc, char *argv[])
 
 
     /* clean up */
+
     gst_element_set_state (pipeline, GST_STATE_NULL);
     gst_object_unref (pipeline);
     g_source_remove (watch_id);
