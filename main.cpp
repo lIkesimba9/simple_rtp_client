@@ -155,7 +155,7 @@ GstPadProbeReturn cb_read_time_from_rtp_pakcet (GstPad *pad,
                                                GstPadProbeInfo *info,gpointer data)
 {
 
-    circular_buffer<pair<long long,long long>> *rtpTimeBuffer = (circular_buffer<pair<long long,long long>> *)data;
+    circular_buffer<pair<unsigned int,unsigned int>> *rtpTimeBuffer = (circular_buffer<pair<unsigned int,unsigned int>> *)data;
     GstBuffer *buffer;
     buffer = GST_PAD_PROBE_INFO_BUFFER (info);
     if (buffer == NULL)
@@ -163,18 +163,19 @@ GstPadProbeReturn cb_read_time_from_rtp_pakcet (GstPad *pad,
 
 
     gpointer miliSec;
-    guint size = 8;
+    guint size = 3;
     GstRTPBuffer rtpBufer = GST_RTP_BUFFER_INIT;
     gst_rtp_buffer_map(buffer,GST_MAP_READ,&rtpBufer);
     // Получаю метку, которые засунул на сервере. милисекунды.
-    gst_rtp_buffer_get_extension_twobytes_header(&rtpBufer,0,1,0,&miliSec,&size);
+    gst_rtp_buffer_get_extension_onebyte_header(&rtpBufer,1,0,&miliSec,&size);
     //rtpRecvTime->push(*((long long *)miliSec));
-    std::chrono::time_point<std::chrono::system_clock> now = std::chrono::system_clock::now();
-    auto duration = now.time_since_epoch();
-    auto recvTime = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count(); //Milisec
     if (miliSec != 0){
-
-        long long sendTime = *((long long *)miliSec); //Milisec
+        struct timespec mt;
+        clock_gettime (CLOCK_REALTIME, &mt);
+        unsigned int nsec = ( unsigned int )mt.tv_nsec;
+        unsigned int sec = ( unsigned int )mt.tv_sec;
+        unsigned int recvTime = ( (nsec >> 14) | (sec << 18) ) & 0x00ffffff;
+        unsigned int sendTime = *((long long *)miliSec) & 0x00ffffff; //Milisec
         rtpTimeBuffer->put({recvTime,sendTime});// сначала время приема, потом время отправления.
     }
 
@@ -186,7 +187,7 @@ GstPadProbeReturn cb_read_time_from_rtp_pakcet (GstPad *pad,
 }
 
 
-GstElement *create_pipeline(circular_buffer<pair<long long,long long>> &buffer){
+GstElement *create_pipeline(circular_buffer<pair<unsigned int,unsigned int>> &buffer){
 
     //queue<long long> rtpRecvTime;
     GstElement *pipeline,*udpSrcRtp,*videconverter,
@@ -294,9 +295,9 @@ GstElement *create_pipeline(circular_buffer<pair<long long,long long>> &buffer){
     return pipeline;
 
 }
-void estimateTime(circular_buffer<pair<long long,long long>> &buffer)
+void estimateTime(circular_buffer<pair<unsigned int,unsigned int>> &buffer)
 {
-    queue<pair<long long,long long>> rtpRecvTimeQueue; // Последние 2 временных метки
+    queue<pair<unsigned int,unsigned int>> rtpRecvTimeQueue; // Последние 2 временных метки
     while (true) {
         if (!buffer.empty())
         {
@@ -305,10 +306,10 @@ void estimateTime(circular_buffer<pair<long long,long long>> &buffer)
             if (rtpRecvTimeQueue.size() == 2)
             {
                 // Обработка
-                pair<long long,long long> oldTime = rtpRecvTimeQueue.front();
+                pair<unsigned int,unsigned int> oldTime = rtpRecvTimeQueue.front();
                 rtpRecvTimeQueue.pop();
-                pair<long long,long long> newTime = rtpRecvTimeQueue.front();
-                long long diff = newTime.first - oldTime.first - (newTime.second - oldTime.second);
+                pair<unsigned int,unsigned int> newTime = rtpRecvTimeQueue.front();
+                int diff = newTime.first - oldTime.first - (newTime.second - oldTime.second);
                 cerr <<"GCC d_i is: " <<  diff << '\n';
 
             }
@@ -322,7 +323,7 @@ int main(int argc, char *argv[])
 
     gst_init(&argc, &argv);
     //  GST_LEVEL_DEBUG;
-    circular_buffer<pair<long long,long long>> circle(10);
+    circular_buffer<pair<unsigned int,unsigned int>> circle(10);
     //  circle.put(1);
     thread callbackMechanismTh(estimateTime,ref(circle));
 
