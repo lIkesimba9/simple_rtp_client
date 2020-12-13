@@ -7,6 +7,7 @@
 #include "circular_buffer.h"
 #include <thread>
 #include <utility>
+#include <fstream>
 using namespace std;
 
 struct timespec timeForPreFilter;
@@ -153,6 +154,9 @@ bool linkRequestAndStaticPads(GstElement *sourse,GstElement *sink,gchar *nameSrc
     return true;
 }
 
+// для отладки
+ofstream outBeforePreFilter;
+ofstream afterPrefilter;
 
 GstPadProbeReturn cb_read_time_from_rtp_pakcet (GstPad *pad,
                                                GstPadProbeInfo *info,gpointer data)
@@ -185,6 +189,9 @@ GstPadProbeReturn cb_read_time_from_rtp_pakcet (GstPad *pad,
         // PRE FILTER CODE !!!
         if(fForMeasTime)
         {
+            outBeforePreFilter.open("out_before_pre_filtet.txt");
+            afterPrefilter.open("out_after_pre_filtet.txt");
+
             clock_gettime(CLOCK_REALTIME,&timeForPreFilter);
             fForMeasTime = false;
             oldRecvTime = recvTime;
@@ -193,12 +200,16 @@ GstPadProbeReturn cb_read_time_from_rtp_pakcet (GstPad *pad,
         }
         else {
             int diff = (recvTime - oldRecvTime) - (sendTime - oldSendTime);
+            outBeforePreFilter << "recvTime: " << recvTime << "oldRecvTime: " << oldRecvTime
+                               << "sendTime: " << sendTime << "oldSendTime: " << oldSendTime
+                               << "diff: " << diff << '\n';
             oldRecvTime = recvTime;
             oldSendTime = sendTime;
 
             if ( (mt.tv_nsec - timeForPreFilter.tv_nsec > checkRtpTime ) || diff < 0 )
             {
                 rtpTimeBuffer->put(diff);
+                afterPrefilter << "diff: " << diff << '\n';
                 clock_gettime(CLOCK_REALTIME,&timeForPreFilter);
             }
 
@@ -373,6 +384,8 @@ int main(int argc, char *argv[])
     gst_object_unref (pipeline);
     g_source_remove (watch_id);
     g_main_loop_unref (loop);
+    outBeforePreFilter.close();
+    afterPrefilter.close();
 
     return 0;
 }
