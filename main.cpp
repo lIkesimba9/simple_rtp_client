@@ -200,9 +200,9 @@ GstPadProbeReturn cb_read_time_from_rtp_pakcet (GstPad *pad,
         }
         else {
             int diff = (recvTime - oldRecvTime) - (sendTime - oldSendTime);
-            outBeforePreFilter << "recvTime: " << recvTime << "oldRecvTime: " << oldRecvTime
-                               << "sendTime: " << sendTime << "oldSendTime: " << oldSendTime
-                               << "diff: " << diff << '\n';
+            outBeforePreFilter << "recvTime: " << recvTime << " oldRecvTime: " << oldRecvTime
+                               << " sendTime: " << sendTime << " oldSendTime: " << oldSendTime
+                               << " diff: " << diff << '\n';
             oldRecvTime = recvTime;
             oldSendTime = sendTime;
 
