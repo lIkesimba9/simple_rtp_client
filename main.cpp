@@ -9,6 +9,9 @@
 #include <utility>
 using namespace std;
 
+struct timespec timeForPreFilter;
+bool fForMeasTime = true;
+#define checkRtpTime 5000000
 /*
  * Receiver setup
  *
@@ -155,28 +158,52 @@ GstPadProbeReturn cb_read_time_from_rtp_pakcet (GstPad *pad,
                                                GstPadProbeInfo *info,gpointer data)
 {
 
-    circular_buffer<pair<unsigned int,unsigned int>> *rtpTimeBuffer = (circular_buffer<pair<unsigned int,unsigned int>> *)data;
+
+    circular_buffer<int> *rtpTimeBuffer = (circular_buffer<int> *)data;
     GstBuffer *buffer;
     buffer = GST_PAD_PROBE_INFO_BUFFER (info);
     if (buffer == NULL)
         return GST_PAD_PROBE_OK;
 
-
+    static int oldRecvTime;
+    static int oldSendTime;
     gpointer miliSec;
     guint size = 3;
     GstRTPBuffer rtpBufer = GST_RTP_BUFFER_INIT;
     gst_rtp_buffer_map(buffer,GST_MAP_READ,&rtpBufer);
-    // Получаю метку, которые засунул на сервере. милисекунды.
+    // Получаю метку, которые засунул на сервере.
     gst_rtp_buffer_get_extension_onebyte_header(&rtpBufer,1,0,&miliSec,&size);
-    //rtpRecvTime->push(*((long long *)miliSec));
     if (miliSec != 0){
         struct timespec mt;
         clock_gettime (CLOCK_REALTIME, &mt);
         unsigned int nsec = ( unsigned int )mt.tv_nsec;
         unsigned int sec = ( unsigned int )mt.tv_sec;
-        unsigned int recvTime = ( (nsec >> 14) | (sec << 18) ) & 0x00ffffff;
-        unsigned int sendTime = *((long long *)miliSec) & 0x00ffffff; //Milisec
-        rtpTimeBuffer->put({recvTime,sendTime});// сначала время приема, потом время отправления.
+        int recvTime = ( (nsec >> 14) | (sec << 18) ) & 0x00ffffff;
+        int sendTime = *((long long *)miliSec) & 0x00ffffff; //Milisec
+
+
+        // PRE FILTER CODE !!!
+        if(fForMeasTime)
+        {
+            clock_gettime(CLOCK_REALTIME,&timeForPreFilter);
+            fForMeasTime = false;
+            oldRecvTime = recvTime;
+            oldSendTime = sendTime;
+
+        }
+        else {
+            int diff = (recvTime - oldRecvTime) - (sendTime - oldSendTime);
+            oldRecvTime = recvTime;
+            oldSendTime = sendTime;
+
+            if ( (mt.tv_nsec - timeForPreFilter.tv_nsec > checkRtpTime ) || diff < 0 )
+            {
+                rtpTimeBuffer->put(diff);
+                clock_gettime(CLOCK_REALTIME,&timeForPreFilter);
+            }
+
+        }
+        // КОнец пре фильтера.
     }
 
     //cerr << "RECV time, milisec: " << *((long long *)miliSec) << '\n';
@@ -187,7 +214,8 @@ GstPadProbeReturn cb_read_time_from_rtp_pakcet (GstPad *pad,
 }
 
 
-GstElement *create_pipeline(circular_buffer<pair<unsigned int,unsigned int>> &buffer){
+
+GstElement *create_pipeline(circular_buffer<int> &buffer){
 
     //queue<long long> rtpRecvTime;
     GstElement *pipeline,*udpSrcRtp,*videconverter,
@@ -289,32 +317,19 @@ GstElement *create_pipeline(circular_buffer<pair<unsigned int,unsigned int>> &bu
     gst_pad_add_probe(rtph264depayPad,GST_PAD_PROBE_TYPE_BUFFER, (GstPadProbeCallback)cb_read_time_from_rtp_pakcet,&buffer,NULL);
     gst_object_unref(GST_OBJECT(rtph264depayPad));
 
-
-
-
     return pipeline;
 
 }
-void estimateTime(circular_buffer<pair<unsigned int,unsigned int>> &buffer)
+void kalmanFilter(circular_buffer<int> &buffer)
 {
-    queue<pair<unsigned int,unsigned int>> rtpRecvTimeQueue; // Последние 2 временных метки
+
     while (true) {
         if (!buffer.empty())
         {
-            cerr << "Buffer size is: " << buffer.size() << '\n';
+          //  cerr << "Buffer size is: " << buffer.size() << '\n';
 
-            if (rtpRecvTimeQueue.size() == 2)
-            {
-                // Обработка
-                pair<unsigned int,unsigned int> oldTime = rtpRecvTimeQueue.front();
-                rtpRecvTimeQueue.pop();
-                pair<unsigned int,unsigned int> newTime = rtpRecvTimeQueue.front();
-                int diff = newTime.first - oldTime.first - (newTime.second - oldTime.second);
-                cerr <<"GCC d_i is: " <<  diff << '\n';
-
-            }
-            rtpRecvTimeQueue.push(buffer.get());
-
+          int d_i = buffer.get();
+          cerr << "Time after prefiler: " << d_i << '\n';
         }
     }
 }
@@ -323,9 +338,9 @@ int main(int argc, char *argv[])
 
     gst_init(&argc, &argv);
     //  GST_LEVEL_DEBUG;
-    circular_buffer<pair<unsigned int,unsigned int>> circle(10);
+    circular_buffer<int> circle(10);
     //  circle.put(1);
-    thread callbackMechanismTh(estimateTime,ref(circle));
+    thread callbackMechanismTh(kalmanFilter,ref(circle));
 
     callbackMechanismTh.detach();
     GMainLoop *loop;
