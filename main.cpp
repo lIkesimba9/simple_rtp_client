@@ -12,7 +12,23 @@ using namespace std;
 
 struct timespec timeForPreFilter;
 bool fForMeasTime = true;
-#define checkRtpTime 5000000
+#define checkRtpTime 5
+// inline-код для вычисления интервала времени в мкс
+// a,b - типа timeval
+// result - uint64
+
+/**
+ * @fn timespec_diff(struct timespec *, struct timespec *, struct timespec *)
+ * @brief Compute the diff of two timespecs, that is a - b = result.
+ * @param a the minuend
+ * @param b the subtrahend
+ * @param result a - b
+ */
+static inline int64_t
+timespec_to_msec(const struct timespec *a)
+{
+    return (int64_t)a->tv_sec * 1000 + a->tv_nsec / 1000000;
+}
 /*
  * Receiver setup
  *
@@ -163,14 +179,14 @@ GstPadProbeReturn cb_read_time_from_rtp_pakcet (GstPad *pad,
 {
 
 
-    circular_buffer<int> *rtpTimeBuffer = (circular_buffer<int> *)data;
+    //circular_buffer<int64_t> *rtpTimeBuffer = (circular_buffer<int64_t> *)data;
     GstBuffer *buffer;
     buffer = GST_PAD_PROBE_INFO_BUFFER (info);
     if (buffer == NULL)
         return GST_PAD_PROBE_OK;
 
-    static int oldRecvTime;
-    static int oldSendTime;
+    static int64_t oldRecvTime;
+    static int64_t oldSendTime;
     gpointer miliSec;
     guint size = 3;
     GstRTPBuffer rtpBufer = GST_RTP_BUFFER_INIT;
@@ -178,14 +194,18 @@ GstPadProbeReturn cb_read_time_from_rtp_pakcet (GstPad *pad,
     // Получаю метку, которые засунул на сервере.
     gst_rtp_buffer_get_extension_onebyte_header(&rtpBufer,1,0,&miliSec,&size);
     if (miliSec != 0){
-        struct timespec mt;
-        clock_gettime (CLOCK_REALTIME, &mt);
-        unsigned int nsec = ( unsigned int )mt.tv_nsec;
-        unsigned int sec = ( unsigned int )mt.tv_sec;
-        int recvTime = ( (nsec >> 14) | (sec << 18) ) & 0x00ffffff;
-        int sendTime = *((long long *)miliSec) & 0x00ffffff; //Milisec
+        struct timespec mtRecv;
+        clock_gettime (CLOCK_REALTIME, &mtRecv);
+        mtRecv.tv_sec = mtRecv.tv_sec & 63;
+        mtRecv.tv_nsec = mtRecv.tv_nsec & 0xffffffffffffc000;
 
-
+        //unsigned int nsec = ( unsigned int )mt.tv_nsec;
+        //unsigned int sec = ( unsigned int )mt.tv_sec;
+        //int recvTime = ( (nsec >> 14) | (sec << 18) ) & 0x00ffffff;
+        unsigned int sendTime = *((long long *)miliSec) & 0x00ffffff; //Milisec
+        struct timespec mtSend;
+        mtSend.tv_sec = sendTime >> 18;
+        mtSend.tv_nsec = sendTime << 14;
         // PRE FILTER CODE !!!
         if(fForMeasTime)
         {
@@ -194,25 +214,24 @@ GstPadProbeReturn cb_read_time_from_rtp_pakcet (GstPad *pad,
 
             clock_gettime(CLOCK_REALTIME,&timeForPreFilter);
             fForMeasTime = false;
-            oldRecvTime = recvTime;
-            oldSendTime = sendTime;
+            oldRecvTime = timespec_to_msec(&mtRecv);
+            oldSendTime = timespec_to_msec(&mtSend);
 
         }
         else {
-            int diff = (recvTime - oldRecvTime) - (sendTime - oldSendTime);
-            outBeforePreFilter << "recvTime: " << recvTime << " oldRecvTime: " << oldRecvTime
-                               << " sendTime: " << sendTime << " oldSendTime: " << oldSendTime
-                               << " diff: " << diff << '\n';
-            oldRecvTime = recvTime;
-            oldSendTime = sendTime;
+            int64_t diffRecv = timespec_to_msec(&mtRecv) - oldRecvTime;
+            int64_t diffSend = timespec_to_msec(&mtSend) - oldSendTime;
+            oldRecvTime = timespec_to_msec(&mtRecv);
+            oldSendTime = timespec_to_msec(&mtSend);
+            int64_t diff = diffRecv - diffSend;
 
-            if ( (mt.tv_nsec - timeForPreFilter.tv_nsec > checkRtpTime ) || diff < 0 )
+
+            if ( (diff > checkRtpTime ) || diff < 0 )
             {
-                rtpTimeBuffer->put(diff);
+              //  rtpTimeBuffer->put(diff);
                 afterPrefilter << "diff: " << diff << '\n';
                 clock_gettime(CLOCK_REALTIME,&timeForPreFilter);
             }
-
         }
         // КОнец пре фильтера.
     }
@@ -226,7 +245,7 @@ GstPadProbeReturn cb_read_time_from_rtp_pakcet (GstPad *pad,
 
 
 
-GstElement *create_pipeline(circular_buffer<int> &buffer){
+GstElement *create_pipeline(circular_buffer<int64_t> &buffer){
 
     //queue<long long> rtpRecvTime;
     GstElement *pipeline,*udpSrcRtp,*videconverter,
@@ -331,7 +350,7 @@ GstElement *create_pipeline(circular_buffer<int> &buffer){
     return pipeline;
 
 }
-void kalmanFilter(circular_buffer<int> &buffer)
+void kalmanFilter(circular_buffer<int64_t> &buffer)
 {
 
     while (true) {
@@ -349,11 +368,11 @@ int main(int argc, char *argv[])
 
     gst_init(&argc, &argv);
     //  GST_LEVEL_DEBUG;
-    circular_buffer<int> circle(10);
+    circular_buffer<int64_t> circle(10);
     //  circle.put(1);
-    thread callbackMechanismTh(kalmanFilter,ref(circle));
+   // thread callbackMechanismTh(kalmanFilter,ref(circle));
 
-    callbackMechanismTh.detach();
+    //callbackMechanismTh.detach();
     GMainLoop *loop;
     loop = g_main_loop_new(NULL,FALSE);
     GstBus *bus;
