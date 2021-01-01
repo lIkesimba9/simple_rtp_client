@@ -8,10 +8,21 @@
 #include <thread>
 #include <utility>
 #include <fstream>
+#include <cmath>
 using namespace std;
 
 struct timespec timeForPreFilter;
 bool fForMeasTime = true;
+// Константы используемые в фильтре
+#define q 1e3
+#define e0 0.1
+#define chi {0.1, 0.001}
+#define delVarTh0 12.5
+#define overuseTimeTh 10
+#define kU 0.01
+#define kD 0.00018
+#define T {0.5, 1}
+#define beta 0.85
 #define checkRtpTime 5
 // inline-код для вычисления интервала времени в мкс
 // a,b - типа timeval
@@ -190,6 +201,8 @@ GstPadProbeReturn cb_read_time_from_rtp_pakcet (GstPad *pad,
     gpointer miliSec;
     guint size = 3;
     GstRTPBuffer rtpBufer = GST_RTP_BUFFER_INIT;
+    double fMax = 0;
+    double tmpFMax;
     gst_rtp_buffer_map(buffer,GST_MAP_READ,&rtpBufer);
     // Получаю метку, которые засунул на сервере.
     gst_rtp_buffer_get_extension_onebyte_header(&rtpBufer,1,0,&miliSec,&size);
@@ -224,12 +237,18 @@ GstPadProbeReturn cb_read_time_from_rtp_pakcet (GstPad *pad,
             oldRecvTime = timespec_to_msec(&mtRecv);
             oldSendTime = timespec_to_msec(&mtSend);
             int64_t diff = diffRecv - diffSend;
+            if(diffSend != 0)
+                tmpFMax = 1 / diffSend;
+            else
+                tmpFMax = 0;
+            fMax =  tmpFMax > fMax ? tmpFMax : fMax;
 
-
-            if ( (diff > checkRtpTime ) || diff < 0 )
+            struct timespec curTime;
+            clock_gettime(CLOCK_REALTIME,&curTime);
+            if ( ( (timespec_to_msec(&curTime) - timespec_to_msec(&timeForPreFilter) ) > checkRtpTime ) || diff < 0 )
             {
               //  rtpTimeBuffer->put(diff);
-                afterPrefilter << "diff: " << diff << '\n';
+              afterPrefilter << "diff: " << diff << " " << fMax << '\n';
                 clock_gettime(CLOCK_REALTIME,&timeForPreFilter);
             }
         }
@@ -352,6 +371,9 @@ GstElement *create_pipeline(circular_buffer<int64_t> &buffer){
 }
 void kalmanFilter(circular_buffer<int64_t> &buffer)
 {
+   // double alpha = pow((1 - chi),(30 / ( 1000 *
+    //f_max = max {1/(T(j) - T(j-1))}
+    //double K_i = (e0 + q) /
 
     while (true) {
         if (!buffer.empty())
@@ -360,6 +382,7 @@ void kalmanFilter(circular_buffer<int64_t> &buffer)
 
           int d_i = buffer.get();
           cerr << "Time after prefiler: " << d_i << '\n';
+
         }
     }
 }
