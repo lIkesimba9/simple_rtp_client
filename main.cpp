@@ -50,10 +50,20 @@ static inline int64_t timespec_to_msec(const struct timespec *a)
  *  receives H264 encoded RTP video on port 5000, RTCP is received on  port 5001.
  *  the receiver RTCP reports are sent to port 5005
  *
- *             .-------.      .----------.     .---------.   .-------.   .------------.   .-----------.
- *  RTP        |udpsrc |      | rtpbin   |     |h264depay|   |h264dec|   |videoconvert|   |xvimagesink|
- *  port=5000  |      src->recv_rtp recv_rtp->sink     src->sink   src->sink        src->sink         |
- *             '-------'      |          |     '---------'   '-------'   '------------'   '-----------'
+ *
+ *
+ *
+ *
+ *
+ *                                                       .---------.    .---------.
+ *                                                       |queue    |    |identity |
+ *                                                   .->sink      src->sink       |
+ *                                                   |   '---------'    '---------'
+ *                                                   |
+ *             .-------.      .----------.     .----src---.    .---------.   .---------.   .-------.   .------------.   .-----------.
+ *  RTP        |udpsrc |      | rtpbin   |     |tee       |    |queue    |   |h264depay|   |h264dec|   |videoconvert|   |xvimagesink|
+ *  port=5000  |      src->recv_rtp recv_rtp->sink       src->sink      src->sink     src->sink   src->sink        src->sink        |
+ *             '-------'      |          |     '----------'    '---------'   '---------'   '-------'   '------------'   '-----------'
  *                            |          |
  *                            |          |     .-------.
  *                            |          |     |udpsink|  RTCP
@@ -146,9 +156,9 @@ static void cb_new_rtp_recv_src_pad (GstElement *element,
                                     gpointer    data)
 {
 
-    GstElement *rtpx264depay = (GstElement *) data;
+    GstElement *secondElement = (GstElement *) data;
     GstPad *sinkPad;
-    sinkPad = gst_element_get_static_pad (rtpx264depay, "sink");
+    sinkPad = gst_element_get_static_pad (secondElement, "sink");
     gst_pad_link (pad, sinkPad);
     gst_object_unref (sinkPad);
 
@@ -214,7 +224,7 @@ bool check_time()
     return ( timespec_to_msec(&curTime) - timespec_to_msec(&timeForPreFilter) ) > checkRtpTime;
 
 }
-GstPadProbeReturn cb_read_time_from_rtp_pakcet (GstPad *pad,
+/*GstPadProbeReturn cb_read_time_from_rtp_pakcet (GstPad *pad,
                                                GstPadProbeInfo *info,gpointer data)
 {
 
@@ -329,7 +339,7 @@ GstPadProbeReturn cb_read_time_from_rtp_pakcet (GstPad *pad,
     gst_rtp_buffer_unmap(&rtpBufer);
     return GST_PAD_PROBE_OK;
 }
-
+*/
 
 
 GstElement *create_pipeline(){//circular_buffer<pair<int64_t,double>> &buffer){
@@ -337,7 +347,8 @@ GstElement *create_pipeline(){//circular_buffer<pair<int64_t,double>> &buffer){
     //queue<long long> rtpRecvTime;
     GstElement *pipeline,*udpSrcRtp,*videconverter,
         *x264decoder,*rtph264depay,*xvimagesink,
-        *rtpbin,*udpSrcRtcp,*udpSinkRtcp;
+        *rtpbin,*udpSrcRtcp,*udpSinkRtcp,*tee,
+        *identity,*queueBeforeH264depay,*queueForCallback;
 
     pipeline = gst_pipeline_new("rtpStreamerRecv");
 
@@ -356,6 +367,17 @@ GstElement *create_pipeline(){//circular_buffer<pair<int64_t,double>> &buffer){
     // Создаю декодер
     x264decoder = gst_element_factory_make("avdec_h264","decoder");
 
+    //Создаю тройник
+    tee = gst_element_factory_make("tee","tee");
+
+    //создаю просто элемент
+    identity = gst_element_factory_make("identity","identity");
+
+    // Создаю очереди для синхронизации
+    queueBeforeH264depay = gst_element_factory_make("queue","queueBeforeH264depay");
+    queueForCallback = gst_element_factory_make("queue","queueForCallback");
+
+
 
 
     // Создаю элелмент который преобразует данные с кодера для воспроизведения.
@@ -364,7 +386,9 @@ GstElement *create_pipeline(){//circular_buffer<pair<int64_t,double>> &buffer){
     xvimagesink = gst_element_factory_make("xvimagesink","video");
 
 
-    if (!pipeline || !udpSrcRtp || !x264decoder || !rtph264depay || !rtpbin || !udpSrcRtp || !udpSinkRtcp || !udpSrcRtcp || !xvimagesink || !videconverter)
+    if (!pipeline || !udpSrcRtp || !x264decoder || !rtph264depay || !rtpbin ||
+        !udpSrcRtp || !udpSinkRtcp || !udpSrcRtcp || !xvimagesink || !videconverter ||
+        !tee || !identity || !queueBeforeH264depay || !queueForCallback)
     {
         cerr << "Not all elements could be created.\n";
         return NULL;
@@ -386,10 +410,11 @@ GstElement *create_pipeline(){//circular_buffer<pair<int64_t,double>> &buffer){
     g_object_set(G_OBJECT(udpSinkRtcp),"async",FALSE,NULL);
 
 
-    g_object_set(G_OBJECT (rtpbin), "latency", 500, NULL);
+   // g_object_set(G_OBJECT (rtpbin), "latency", 500, NULL);
     // Добавляю элементы в контейнер
     gst_bin_add_many(GST_BIN(pipeline),udpSrcRtp,udpSrcRtcp,rtpbin,udpSinkRtcp,
-                     rtph264depay,x264decoder,videconverter,xvimagesink,NULL);
+                     rtph264depay,x264decoder,videconverter,xvimagesink,tee,
+                     identity,queueForCallback,queueBeforeH264depay,NULL);
 
     // Сойденяю PADы.
 
@@ -417,10 +442,27 @@ GstElement *create_pipeline(){//circular_buffer<pair<int64_t,double>> &buffer){
 
     // сойденяю остальные элементы
     // Подключаю сигнал для ПАДа, который доступен иногда.
-    g_signal_connect (rtpbin, "pad-added", G_CALLBACK (cb_new_rtp_recv_src_pad),rtph264depay);
+    g_signal_connect (rtpbin, "pad-added", G_CALLBACK (cb_new_rtp_recv_src_pad),tee);
 
+    if (!linkRequestAndStaticPads(tee,queueBeforeH264depay,"src_%u","sink"))
+    {
+        cerr << "Error create link, beetwen tee and queueBeforeH264depay\n";
+        return NULL;
+    }
 
-    if (!gst_element_link_many(rtph264depay,x264decoder,videconverter,xvimagesink,NULL))
+    if (!linkRequestAndStaticPads(tee,queueForCallback,"src_%u","sink"))
+    {
+        cerr << "Error create link, beetwen tee and queueForCallback\n";
+        return NULL;
+    }
+
+    if (!gst_element_link_many(queueBeforeH264depay,rtph264depay,x264decoder,videconverter,xvimagesink,NULL))
+    {
+        cerr << "Elements could not be linked other.\n";
+        return NULL;
+
+    }
+    if (!gst_element_link_many(queueForCallback,identity,NULL))
     {
         cerr << "Elements could not be linked other.\n";
         return NULL;
@@ -430,9 +472,9 @@ GstElement *create_pipeline(){//circular_buffer<pair<int64_t,double>> &buffer){
 
 
     // Подключаю обработку ПЭДа, для получение временной метки.
-    GstPad *rtph264depayPad = gst_element_get_static_pad(rtph264depay,"sink");
-    gst_pad_add_probe(rtph264depayPad,GST_PAD_PROBE_TYPE_BUFFER, (GstPadProbeCallback)cb_read_time_from_rtp_pakcet,NULL,NULL);
-    gst_object_unref(GST_OBJECT(rtph264depayPad));
+   // GstPad *rtph264depayPad = gst_element_get_static_pad(rtph264depay,"sink");
+  //  gst_pad_add_probe(rtph264depayPad,GST_PAD_PROBE_TYPE_BUFFER, (GstPadProbeCallback)cb_read_time_from_rtp_pakcet,NULL,NULL);
+   // gst_object_unref(GST_OBJECT(rtph264depayPad));
 
     return pipeline;
 
