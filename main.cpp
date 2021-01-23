@@ -4,7 +4,6 @@
 #include <gst/rtp/rtp.h>
 #include <sys/time.h>
 #include <queue>
-#include "circular_buffer.h"
 #include <thread>
 #include <future>
 #include <utility>
@@ -12,37 +11,6 @@
 #include <cmath>
 
 using namespace std;
-
-struct timespec timeForPreFilter;
-bool fForMeasTime = true;
-bool fFirstPacketGroup = true;
-// Константы используемые в фильтре
-#define q 1e3
-#define e0 0.1
-//#define chi {0.1, 0.001}
-#define chi 0.0505
-#define delVarTh0 12.5
-#define overuseTimeTh 10
-#define kU 0.01
-#define kD 0.00018
-#define T {0.5, 1}
-#define beta 0.85
-#define checkRtpTime 5
-// inline-код для вычисления интервала времени в мкс
-// a,b - типа timeval
-// result - uint64
-
-/**
- * @fn timespec_diff(struct timespec *, struct timespec *, struct timespec *)
- * @brief Compute the diff of two timespecs, that is a - b = result.
- * @param a the minuend
- * @param b the subtrahend
- * @param result a - b
- */
-static inline int64_t timespec_to_msec(const struct timespec *a)
-{
-    return (int64_t)a->tv_sec * 1000 + a->tv_nsec / 1000000;
-}
 
 /*
  * Receiver setup
@@ -195,151 +163,7 @@ bool linkRequestAndStaticPads(GstElement *sourse,GstElement *sink,gchar *nameSrc
     return true;
 }
 
-// для отладки
-ofstream outLogData;
-ofstream afterPrefilter;
 
-inline void write_header_in_csv_file(vector<string> headers,ofstream &out)
-{
-
-    for (int i = 0; i < headers.size() - 1; i++)
-        out  << headers[i] << ",";
-
-    out << headers[headers.size() - 1] << '\n';
-}
-void write_data_in_csv_file(vector<int64_t> values,ofstream &out)
-{
-    for (int i = 0; i < values.size() - 1; i++)
-        out  << values[i] << ",";
-
-    out << values[values.size() - 1] << '\n';
-
-
-}
-bool check_time()
-{
-
-    struct timespec curTime;
-    clock_gettime(CLOCK_REALTIME,&curTime);
-    return ( timespec_to_msec(&curTime) - timespec_to_msec(&timeForPreFilter) ) > checkRtpTime;
-
-}
-/*GstPadProbeReturn cb_read_time_from_rtp_pakcet (GstPad *pad,
-                                               GstPadProbeInfo *info,gpointer data)
-{
-
-
-    // circular_buffer<pair<int64_t,double>> *rtpTimeBuffer = (circular_buffer<pair<int64_t,double>> *)data;
-    GstBuffer *buffer;
-    buffer = GST_PAD_PROBE_INFO_BUFFER (info);
-    if (buffer == NULL)
-        return GST_PAD_PROBE_OK;
-
-    static int64_t oldRecvTime;
-    static int64_t oldSendTime;
-    static int64_t oldRecvGroupTime;
-
-    static int64_t packetsInGroups = 0;
-    gpointer miliSec;
-    guint size = 3;
-    GstRTPBuffer rtpBufer = GST_RTP_BUFFER_INIT;
-    static double fMax = 1;
-    double tmpFMax;
-    gst_rtp_buffer_map(buffer,GST_MAP_READ,&rtpBufer);
-    // Получаю метку, которые засунул на сервере.
-    gst_rtp_buffer_get_extension_onebyte_header(&rtpBufer,1,0,&miliSec,&size);
-
-    if (miliSec != 0){
-
-        struct timespec mtRecv;
-        clock_gettime (CLOCK_REALTIME, &mtRecv);
-        mtRecv.tv_sec = mtRecv.tv_sec & 63;
-        mtRecv.tv_nsec = mtRecv.tv_nsec & 0xffffffffffffc000;
-
-
-        unsigned int sendTime = *((long long *)miliSec) & 0x00ffffff; //Milisec
-        struct timespec mtSend;
-        mtSend.tv_sec = sendTime >> 18;
-        mtSend.tv_nsec = sendTime << 14;
-
-
-        // PRE FILTER CODE !!!
-        if(fForMeasTime)
-        {
-            // Для отладки октрытие файлов
-            outLogData.open("data.csv");
-            //write_header_in_csv_file({"diff","Group size"},outLogData);
-            //vector<string> headers = {"diff","Group size"};
-
-            outLogData  <<"diff,Group size" << '\n';
-            //  afterPrefilter.open("out_after_pre_filtet.txt");
-
-
-            clock_gettime(CLOCK_REALTIME,&timeForPreFilter);
-            fForMeasTime = false;
-            oldRecvTime = timespec_to_msec(&mtRecv);
-            oldSendTime = timespec_to_msec(&mtSend);
-
-        }
-        else {
-
-
-            int64_t diffRecv = timespec_to_msec(&mtRecv) - oldRecvTime;
-            int64_t diffSend = timespec_to_msec(&mtSend) - oldSendTime;
-            oldRecvTime = timespec_to_msec(&mtRecv);
-            oldSendTime = timespec_to_msec(&mtSend);
-            int64_t diff = diffRecv - diffSend;
-
-            struct timespec curTime;
-            clock_gettime(CLOCK_REALTIME,&curTime);
-            packetsInGroups++;
-            if ( diff < 0 || ( timespec_to_msec(&curTime) - timespec_to_msec(&timeForPreFilter) ) > checkRtpTime )
-            {
-
-                //  rtpTimeBuffer->put(diff);
-                if (fFirstPacketGroup)
-                {
-
-                    oldRecvGroupTime = oldRecvTime;
-                    clock_gettime(CLOCK_REALTIME,&timeForPreFilter);
-                    fFirstPacketGroup = false;
-
-                }
-                else {
-
-                    if((oldRecvTime - oldRecvGroupTime) != 0)
-                        tmpFMax = 1 / (oldRecvTime - oldRecvGroupTime);
-                    else
-                        tmpFMax = 0;
-
-                    fMax =  tmpFMax > fMax ? tmpFMax : fMax;
-                    oldRecvGroupTime = oldRecvTime;
-
-
-                    //Запись стастистики
-
-                    // packetsInGroups = 0;
-
-                    outLogData  << diff << "," << packetsInGroups<< '\n';
-                    packetsInGroups = 0;
-                    //double alpha = pow((1 - chi),30 / (1000 * fMax));
-                    // rtpTimeBuffer->put({diff,packetsInGroups});
-
-                    clock_gettime(CLOCK_REALTIME,&timeForPreFilter);
-                }
-
-            }
-        }
-        // КОнец пре фильтера.
-    }
-
-    //cerr << "RECV time, milisec: " << *((long long *)miliSec) << '\n';
-
-
-    gst_rtp_buffer_unmap(&rtpBufer);
-    return GST_PAD_PROBE_OK;
-}
-*/
 
 
 GstElement *create_pipeline(){//circular_buffer<pair<int64_t,double>> &buffer){
@@ -371,7 +195,7 @@ GstElement *create_pipeline(){//circular_buffer<pair<int64_t,double>> &buffer){
     tee = gst_element_factory_make("tee","tee");
 
     //создаю просто элемент
-    identity = gst_element_factory_make("identity","identity");
+    identity = gst_element_factory_make("gccanalysis","identity");
 
     // Создаю очереди для синхронизации
     queueBeforeH264depay = gst_element_factory_make("queue","queueBeforeH264depay");
@@ -468,57 +292,26 @@ GstElement *create_pipeline(){//circular_buffer<pair<int64_t,double>> &buffer){
         return NULL;
 
     }
-
-
-
-    // Подключаю обработку ПЭДа, для получение временной метки.
-   // GstPad *rtph264depayPad = gst_element_get_static_pad(rtph264depay,"sink");
-  //  gst_pad_add_probe(rtph264depayPad,GST_PAD_PROBE_TYPE_BUFFER, (GstPadProbeCallback)cb_read_time_from_rtp_pakcet,NULL,NULL);
-   // gst_object_unref(GST_OBJECT(rtph264depayPad));
-
     return pipeline;
 
 }
-void kalmanFilter(circular_buffer<pair<int64_t,double>> &buffer)
-{
-    // double alpha = pow((1 - chi),(30 / ( 1000 *
-    //f_max = max {1/(T(j) - T(j-1))}
-    //double K_i = (e0 + q) /
 
-    double var_v_hat = 1;
-    while (true) {
-
-        if (!buffer.empty())
-        {
-            //    cerr << "Buffer size is: " << buffer.size() << '\n';
-
-            pair<int64_t,double> data = buffer.get();
-
-            int64_t diff = data.first;
-            int64_t alpha = data.second;
-            // write_data_in_csv_file({diff,alpha},outLogData);
-            //  double z_i = diff - m_hat;
-            //  double var_v_hat_i = max(alpha * var_v_hat + (1 - alpha) * z)
-
-            // cerr << "Time after prefiler: " << d_i << '\n';
-
-        }
-    }
-}
 int main(int argc, char *argv[])
 {
 
 
     gst_init(&argc, &argv);
-    //  GST_LEVEL_DEBUG;
-    // circular_buffer<pair<int64_t,double>> circle(10);
-    //  circle.put(1);
-    // thread callbackMechanismTh(kalmanFilter,ref(circle));
-    //future<void> handle = async(launch::async,kalmanFilter,ref(circle));
-    //callbackMechanismTh.detach();
+
+    GstRegistry *registry;
+
+    registry = gst_registry_get();
+    gst_registry_scan_path(registry,"../simple_rtp_client/plugin/");
+
+
     GMainLoop *loop;
     loop = g_main_loop_new(NULL,FALSE);
     GstBus *bus;
+
 
     GstElement *pipeline = create_pipeline();
     if (pipeline == NULL)
@@ -547,8 +340,6 @@ int main(int argc, char *argv[])
     g_source_remove (watch_id);
     g_main_loop_unref (loop);
 
-    outLogData.close();
-    //afterPrefilter.close();
 
     return 0;
 }
