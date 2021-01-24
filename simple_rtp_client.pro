@@ -22,4 +22,4 @@ unix: PKGCONFIG += /usr/lib/x86_64-linux-gnu/pkgconfig/gstreamer-plugins-base-1.
 unix: PKGCONFIG += /usr/lib/x86_64-linux-gnu/pkgconfig/gstreamer-plugins-good-1.0.pc
 unix: PKGCONFIG += /usr/lib/x86_64-linux-gnu/pkgconfig/gstreamer-rtp-1.0.pc
 
-HEADERS +=
+

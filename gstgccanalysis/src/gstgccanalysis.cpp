@@ -3,7 +3,7 @@
  * Copyright (C) 2005 Thomas Vander Stichele <thomas@apestaart.org>
  * Copyright (C) 2005 Ronald S. Bultje <rbultje@ronald.bitfreak.net>
  * Copyright (C) 2021 simba9 <<user@hostname.org>>
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
  * to deal in the Software without restriction, including without limitation
@@ -188,7 +188,7 @@ static void gst_gcc_analysis_init (GstGccAnalysis * gcc)
 }
 
 static void gst_gcc_analysis_set_property (GObject * object, guint prop_id,
-                              const GValue * value, GParamSpec * pspec)
+                                          const GValue * value, GParamSpec * pspec)
 {
     GstGccAnalysis *gcc = GST_GCCANALYSIS (object);
 
@@ -203,7 +203,7 @@ static void gst_gcc_analysis_set_property (GObject * object, guint prop_id,
 }
 
 static void gst_gcc_analysis_get_property (GObject * object, guint prop_id,
-                              GValue * value, GParamSpec * pspec)
+                                          GValue * value, GParamSpec * pspec)
 {
     GstGccAnalysis *gcc = GST_GCCANALYSIS (object);
 
@@ -268,7 +268,7 @@ static GstFlowReturn gst_gcc_analysis_chain (GstPad * pad, GstObject * parent, G
 
     //unsigned int test = *((long long *)miliSec) & 0x00ffffff;
 
-   // g_print("time %d",test);
+    // g_print("time %d",test);
     double tmpFMax;
 
     // Получаю метку, которые засунул на сервере.
@@ -292,8 +292,8 @@ static GstFlowReturn gst_gcc_analysis_chain (GstPad * pad, GstObject * parent, G
         if(gcc->fForMeasTime)
         {
             // Для отладки октрытие файлов
-           // outLogData.open("data12.csv");
-           // outLogData  <<"diff,Group size" << '\n';
+            // outLogData.open("data12.csv");
+            // outLogData  <<"diff,Group size" << '\n';
 
 
 
@@ -339,7 +339,7 @@ static GstFlowReturn gst_gcc_analysis_chain (GstPad * pad, GstObject * parent, G
 
 
 
-//                    outLogData  << diff << "," << packetsInGroups<< '\n';
+                    //                    outLogData  << diff << "," << packetsInGroups<< '\n';
                     gcc->packetsInGroups = 0;
                     //double alpha = pow((1 - chi),30 / (1000 * fMax));
 
