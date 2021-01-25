@@ -1,7 +1,6 @@
 project(gstgccanalysis LANGUAGES CXX)
 cmake_minimum_required(VERSION 3.16)
 
-
 set(SOURCE_LIB src/gstgccanalysis.cpp src/log.cpp)
 set(HEADER_FILES include/gstgccanalysis.h include/log.h)
 find_package(PkgConfig REQUIRED)
@@ -28,4 +27,12 @@ add_library(gstgccanalysis SHARED ${SOURCE_LIB})
 
 target_link_libraries(gstgccanalysis ${LIBS})
 
-install(TARGETS gstgccanalysis DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/../plugin)
+#set_target_properties( gstgccanalysis
+#    PROPERTIES
+#    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/debug/lib"
+#    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/debug/lib"
+#    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/debug/bin"
+#)
+
+
+#install(TARGETS gstgccanalysis DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/../../plugin)

@@ -305,7 +305,7 @@ int main(int argc, char *argv[])
     GstRegistry *registry;
 
     registry = gst_registry_get();
-    gst_registry_scan_path(registry,"../simple_rtp_client/plugin/");
+    gst_registry_scan_path(registry,"gstgccanalysis/");
 
 
     GMainLoop *loop;

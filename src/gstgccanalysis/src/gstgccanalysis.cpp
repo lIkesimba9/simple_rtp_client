@@ -69,6 +69,7 @@
 #include <fstream>
 #include <string>
 #include "gstgccanalysis.h"
+#include "log.cpp"
 
 using namespace std;
 

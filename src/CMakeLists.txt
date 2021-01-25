@@ -2,7 +2,7 @@ project(simple_rtp_client LANGUAGES CXX)
 cmake_minimum_required(VERSION 3.16)
 
 
-set(SOURCE src/main.cpp )
+set(SOURCE main.cpp )
 
 find_package(PkgConfig REQUIRED)
 
@@ -34,8 +34,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED YES)
 include_directories(gstgccanalysis)
 
 
+
 add_executable(simple_rtp_client ${SOURCE})
 
 add_subdirectory(gstgccanalysis)	
 
 target_link_libraries(simple_rtp_client ${LIBS})
+
+#install(TARGETS simple_rtp_client DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/..)

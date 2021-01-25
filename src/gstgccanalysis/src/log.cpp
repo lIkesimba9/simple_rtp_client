@@ -3,13 +3,13 @@
 template <class T>
 log<T>::log() {}
 template <class T>
-void log<T>::setFileName(string filename)
+void log<T>::setFileName(std::string filename)
 {
     out.open(filename);
 }
 
 template <class T>
-void log<T>::setHeader(vector<string> headers)
+void log<T>::setHeader(std::vector<std::string> headers)
 {
     for (int i = 0; i < headers.size()-1; i++)
         out << headers[i] << ",";
@@ -17,7 +17,7 @@ void log<T>::setHeader(vector<string> headers)
 
 }
 template <class T>
-void log<T>::logging(vector<T> data)
+void log<T>::logging(std::vector<T> data)
 {
     for (int i = 0; i < data.size()-1; i++)
         out << data[i] << ",";
