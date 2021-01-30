@@ -48,8 +48,9 @@
 #define __GST_GCCANALYSIS_H__
 
 #include <gst/gst.h>
-#include "log.h"
-
+#include <stdio.h>
+//#include "log.h"
+//#include <fstream>
 
 G_BEGIN_DECLS
 
@@ -79,9 +80,10 @@ struct _GstGccAnalysis
     int64_t packetsInGroups = 0;
 
     double fMax = 1;
+    FILE *out;
     // для отладки
-
-    log<int64_t> l;
+  //  std::ofstream out;
+    //log<int64_t> l;
 };
 
 G_END_DECLS

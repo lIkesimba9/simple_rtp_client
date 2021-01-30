@@ -23,10 +23,10 @@ using namespace std;
  *
  *
  *
- *                                                       .---------.    .---------.
- *                                                       |queue    |    |identity |
- *                                                   .->sink      src->sink       |
- *                                                   |   '---------'    '---------'
+ *                                                       .---------.    .---------------.
+ *                                                       |queue    |    |gstgccanalysis |
+ *                                                   .->sink      src->sink             |
+ *                                                   |   '---------'    '---------------'
  *                                                   |
  *             .-------.      .----------.     .----src---.    .---------.   .---------.   .-------.   .------------.   .-----------.
  *  RTP        |udpsrc |      | rtpbin   |     |tee       |    |queue    |   |h264depay|   |h264dec|   |videoconvert|   |xvimagesink|
@@ -58,6 +58,7 @@ static gboolean bus_call (GstBus     *bus,
     case GST_MESSAGE_ERROR: {
         gchar *debug = NULL;
         GError *err = NULL;
+
 
         gst_message_parse_error (msg, &err, &debug);
 
@@ -172,7 +173,7 @@ GstElement *create_pipeline(){//circular_buffer<pair<int64_t,double>> &buffer){
     GstElement *pipeline,*udpSrcRtp,*videconverter,
         *x264decoder,*rtph264depay,*xvimagesink,
         *rtpbin,*udpSrcRtcp,*udpSinkRtcp,*tee,
-        *identity,*queueBeforeH264depay,*queueForCallback;
+        *gccanalysis,*queueBeforeH264depay,*queueForCallback;
 
     pipeline = gst_pipeline_new("rtpStreamerRecv");
 
@@ -195,7 +196,7 @@ GstElement *create_pipeline(){//circular_buffer<pair<int64_t,double>> &buffer){
     tee = gst_element_factory_make("tee","tee");
 
     //создаю просто элемент
-    identity = gst_element_factory_make("gccanalysis","identity");
+    gccanalysis = gst_element_factory_make("gccanalysis","gccanalysis");
 
     // Создаю очереди для синхронизации
     queueBeforeH264depay = gst_element_factory_make("queue","queueBeforeH264depay");
@@ -212,7 +213,7 @@ GstElement *create_pipeline(){//circular_buffer<pair<int64_t,double>> &buffer){
 
     if (!pipeline || !udpSrcRtp || !x264decoder || !rtph264depay || !rtpbin ||
         !udpSrcRtp || !udpSinkRtcp || !udpSrcRtcp || !xvimagesink || !videconverter ||
-        !tee || !identity || !queueBeforeH264depay || !queueForCallback)
+        !tee || !gccanalysis || !queueBeforeH264depay || !queueForCallback)
     {
         cerr << "Not all elements could be created.\n";
         return NULL;
@@ -223,12 +224,14 @@ GstElement *create_pipeline(){//circular_buffer<pair<int64_t,double>> &buffer){
 
 
     // Устанавливаю параметры для upd сойденений.
-    g_object_set(G_OBJECT(udpSrcRtcp),"address","127.0.0.1",NULL);
+    g_object_set(G_OBJECT(udpSrcRtcp),"address","127.0.0.1",NULL); // for localhost
+   // g_object_set(G_OBJECT(udpSrcRtcp),"address","192.168.2.2",NULL);
     g_object_set(G_OBJECT(udpSrcRtcp),"port",5001,NULL);
     g_object_set(G_OBJECT (udpSrcRtcp), "caps", gst_caps_from_string("application/x-rtcp"), NULL);
 
 
-    g_object_set(G_OBJECT(udpSinkRtcp),"host","127.0.0.1",NULL);
+   g_object_set(G_OBJECT(udpSinkRtcp),"host","127.0.0.1",NULL); // for localhost
+   //  g_object_set(G_OBJECT(udpSinkRtcp),"host","10.2.1.2",NULL);
     g_object_set(G_OBJECT(udpSinkRtcp),"port",5005,NULL);
     g_object_set(G_OBJECT(udpSinkRtcp),"sync",FALSE,NULL);
     g_object_set(G_OBJECT(udpSinkRtcp),"async",FALSE,NULL);
@@ -238,7 +241,7 @@ GstElement *create_pipeline(){//circular_buffer<pair<int64_t,double>> &buffer){
     // Добавляю элементы в контейнер
     gst_bin_add_many(GST_BIN(pipeline),udpSrcRtp,udpSrcRtcp,rtpbin,udpSinkRtcp,
                      rtph264depay,x264decoder,videconverter,xvimagesink,tee,
-                     identity,queueForCallback,queueBeforeH264depay,NULL);
+                     gccanalysis,queueForCallback,queueBeforeH264depay,NULL);
 
     // Сойденяю PADы.
 
@@ -286,7 +289,7 @@ GstElement *create_pipeline(){//circular_buffer<pair<int64_t,double>> &buffer){
         return NULL;
 
     }
-    if (!gst_element_link_many(queueForCallback,identity,NULL))
+    if (!gst_element_link_many(queueForCallback,gccanalysis,NULL))
     {
         cerr << "Elements could not be linked other.\n";
         return NULL;

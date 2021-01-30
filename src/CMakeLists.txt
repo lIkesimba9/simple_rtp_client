@@ -31,8 +31,6 @@ set(LIBS ${LIBS} ${GST_RTP_LIBRARIES} ${GST_LIBRARIES} ${GST_RTP_BASE_LIBRARIES}
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
-include_directories(gstgccanalysis)
-
 
 
 add_executable(simple_rtp_client ${SOURCE})

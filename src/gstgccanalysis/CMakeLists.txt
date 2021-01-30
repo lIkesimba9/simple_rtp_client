@@ -1,8 +1,8 @@
 project(gstgccanalysis LANGUAGES CXX)
 cmake_minimum_required(VERSION 3.16)
 
-set(SOURCE_LIB src/gstgccanalysis.cpp src/log.cpp)
-set(HEADER_FILES include/gstgccanalysis.h include/log.h)
+set(SOURCE_LIB src/gstgccanalysis.cpp) #src/log.cpp)
+#set(HEADER_FILES include/gstgccanalysis.h include/log.h)
 find_package(PkgConfig REQUIRED)
 
 

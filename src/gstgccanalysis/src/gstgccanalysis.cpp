@@ -56,10 +56,6 @@
  * </refsect2>
  */
 
-#ifdef HAVE_CONFIG_H
-#  include <config.h>
-#endif
-
 
 
 #include <gst/gst.h>
@@ -69,7 +65,6 @@
 #include <fstream>
 #include <string>
 #include "gstgccanalysis.h"
-#include "log.cpp"
 
 using namespace std;
 
@@ -131,9 +126,7 @@ static GstFlowReturn gst_gcc_analysis_chain (GstPad * pad, GstObject * parent, G
 // Прототипы моих функций
 
 static inline int64_t timespec_to_msec(const struct timespec *a);
-
-inline void write_header_in_csv_file(vector<string> headers,ofstream &out);
-inline void write_data_in_csv_file(vector<int64_t> values,ofstream &out);
+static inline int64_t timespec_to_usec(const struct timespec *a); // to micro sec
 
 /* GObject vmethod implementations */
 
@@ -179,8 +172,8 @@ static void gst_gcc_analysis_init (GstGccAnalysis * gcc)
     GST_PAD_SET_PROXY_CAPS (gcc->sinkpad);
     gst_element_add_pad (GST_ELEMENT (gcc), gcc->sinkpad);
 
-    gcc->l.setFileName("../samples/datanew.csv");
-    gcc->l.setHeader({"diff","diffGroup"});
+    gcc->out = fopen("../samples/datanew.csv","wt");
+    fprintf(gcc->out,"RecvTime,oldRecvTime,SendTime,oldSendTime\n");
 
     gcc->silent = FALSE;
     gcc->fFirstPacketGroup = true;
@@ -228,7 +221,7 @@ static gboolean gst_gcc_analysis_sink_event (GstPad * pad, GstObject * parent, G
 
     gcc = GST_GCCANALYSIS (parent);
 
-    GST_LOG_OBJECT (gcc, "Received %s event: %" GST_PTR_FORMAT,
+    GST_LOG_OBJECT (gcc, "!!!!!!!!!!!!Received %s event: %" GST_PTR_FORMAT,
                    GST_EVENT_TYPE_NAME (event), event);
 
     switch (GST_EVENT_TYPE (event)) {
@@ -292,31 +285,30 @@ static GstFlowReturn gst_gcc_analysis_chain (GstPad * pad, GstObject * parent, G
         // PRE FILTER CODE !!!
         if(gcc->fForMeasTime)
         {
-            // Для отладки октрытие файлов
-            // outLogData.open("data12.csv");
-            // outLogData  <<"diff,Group size" << '\n';
 
 
 
             clock_gettime(CLOCK_REALTIME,&gcc->timeForPreFilter);
             gcc->fForMeasTime = false;
-            gcc->oldRecvTime = timespec_to_msec(&mtRecv);
-            gcc->oldSendTime = timespec_to_msec(&mtSend);
+            gcc->oldRecvTime = timespec_to_usec(&mtRecv);
+            gcc->oldSendTime = timespec_to_usec(&mtSend);
 
         }
         else {
 
 
-            int64_t diffRecv = timespec_to_msec(&mtRecv) - gcc->oldRecvTime;
-            int64_t diffSend = timespec_to_msec(&mtSend) - gcc->oldSendTime;
-            gcc->oldRecvTime = timespec_to_msec(&mtRecv);
-            gcc->oldSendTime = timespec_to_msec(&mtSend);
+            int64_t diffRecv = timespec_to_usec(&mtRecv) - gcc->oldRecvTime;
+            int64_t diffSend = timespec_to_usec(&mtSend) - gcc->oldSendTime;
+            fprintf(gcc->out,"%ld,%ld,%ld,%ld\n",timespec_to_usec(&mtRecv),gcc->oldRecvTime,timespec_to_usec(&mtSend),gcc->oldSendTime);
+            fflush(gcc->out);
+            gcc->oldRecvTime = timespec_to_usec(&mtRecv);
+            gcc->oldSendTime = timespec_to_usec(&mtSend);
             int64_t diff = diffRecv - diffSend;
 
             struct timespec curTime;
             clock_gettime(CLOCK_REALTIME,&curTime);
             gcc->packetsInGroups++;
-            if ( diff < 0 || ( timespec_to_msec(&curTime) - timespec_to_msec(&gcc->timeForPreFilter) ) > checkRtpTime )
+            if ( diff < 0 || ( timespec_to_usec(&curTime) - timespec_to_usec(&gcc->timeForPreFilter) ) > checkRtpTime )
             {
                 if (gcc->fFirstPacketGroup)
                 {
@@ -327,8 +319,8 @@ static GstFlowReturn gst_gcc_analysis_chain (GstPad * pad, GstObject * parent, G
 
                 }
                 else {
-                    //cerr << diff << '\n';
-                    //g_print("diff %ld\n",diff);
+
+
                     if((gcc->oldRecvTime - gcc->oldRecvGroupTime) != 0)
                         tmpFMax = 1 / (gcc->oldRecvTime - gcc->oldRecvGroupTime);
                     else
@@ -337,7 +329,7 @@ static GstFlowReturn gst_gcc_analysis_chain (GstPad * pad, GstObject * parent, G
                     gcc->fMax =  tmpFMax > gcc->fMax ? tmpFMax : gcc->fMax;
                     gcc->oldRecvGroupTime = gcc->oldRecvTime;
 
-
+                  //  gcc->out << diff << "," << gcc->fMax << '\n';
 
 
                     //                    outLogData  << diff << "," << packetsInGroups<< '\n';
@@ -403,21 +395,9 @@ static inline int64_t timespec_to_msec(const struct timespec *a)
 {
     return (int64_t)a->tv_sec * 1000 + a->tv_nsec / 1000000;
 }
-
-inline void write_header_in_csv_file(vector<string> headers,ofstream &out)
+static inline int64_t timespec_to_usec(const struct timespec *a)
 {
-
-    for (int i = 0; i < headers.size() - 1; i++)
-        out  << headers[i] << ",";
-
-    out << headers[headers.size() - 1] << '\n';
+    return (int64_t)a->tv_sec * 1000000 + a->tv_nsec / 1000;
 }
-inline void write_data_in_csv_file(vector<int64_t> values,ofstream &out)
-{
-    for (int i = 0; i < values.size() - 1; i++)
-        out  << values[i] << ",";
-
-    out << values[values.size() - 1] << '\n';
 
 
-}
