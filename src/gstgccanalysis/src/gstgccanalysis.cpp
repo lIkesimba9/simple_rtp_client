@@ -173,7 +173,10 @@ static void gst_gcc_analysis_init (GstGccAnalysis * gcc)
     gst_element_add_pad (GST_ELEMENT (gcc), gcc->sinkpad);
 
     gcc->out = fopen("../samples/datanew.csv","wt");
-    fprintf(gcc->out,"RecvTime,oldRecvTime,SendTime,oldSendTime\n");
+    fprintf(gcc->out,"RecvTime,RecvTimeHightBits,RecvTimeLowBits,"
+                      "oldRecvTime,oldRecvTimeHightBits,oldRecvTimeLowBits,"
+                      "SendTime,SendTimeHightBits,SendTimeLowBits,"
+                      "oldSendTime,oldSendTimeHightBits,oldSendTimeLowBits\n");
 
     gcc->silent = FALSE;
     gcc->fFirstPacketGroup = true;
@@ -246,6 +249,7 @@ static gboolean gst_gcc_analysis_sink_event (GstPad * pad, GstObject * parent, G
 /* chain function
  * this function does the actual processing
  */
+
 static GstFlowReturn gst_gcc_analysis_chain (GstPad * pad, GstObject * parent, GstBuffer * buf)
 {
     GstGccAnalysis *gcc;
@@ -290,56 +294,37 @@ static GstFlowReturn gst_gcc_analysis_chain (GstPad * pad, GstObject * parent, G
 
             clock_gettime(CLOCK_REALTIME,&gcc->timeForPreFilter);
             gcc->fForMeasTime = false;
-            gcc->oldRecvTime = timespec_to_usec(&mtRecv);
-            gcc->oldSendTime = timespec_to_usec(&mtSend);
+            gcc->oldRecvTime = mtRecv;
+            gcc->oldSendTime = mtSend;
 
         }
         else {
 
+            // Проверка на переполнение RecvTime и Send Time
 
-            int64_t diffRecv = timespec_to_usec(&mtRecv) - gcc->oldRecvTime;
-            int64_t diffSend = timespec_to_usec(&mtSend) - gcc->oldSendTime;
-            fprintf(gcc->out,"%ld,%ld,%ld,%ld\n",timespec_to_usec(&mtRecv),gcc->oldRecvTime,timespec_to_usec(&mtSend),gcc->oldSendTime);
+     //       if ( ( (32 & mtRecv.tv_sec) == 0) && ( (32 & gcc->oldRecvTime.tv_sec) == 1) ){
+     //           gcc->oldRecvTime.tv_sec = (gcc->oldRecvTime.tv_sec ^ 63);
+     //           return GST_FLOW_OK;
+     //       }
+
+    //        if ( ( (32 & mtSend.tv_sec) == 0) && ( (32 & gcc->oldSendTime.tv_sec) == 1) ){
+    //            gcc->oldSendTime.tv_sec = (gcc->oldSendTime.tv_sec ^ 63);
+     //           return GST_FLOW_OK;
+      //      }
+             int64_t diffRecv = timespec_to_usec(&mtRecv) - timespec_to_usec(&gcc->oldRecvTime);
+            int64_t diffSend = timespec_to_usec(&mtSend) - timespec_to_usec(&gcc->oldSendTime);
+            fprintf(gcc->out,"%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld\n",
+                    timespec_to_usec(&mtRecv),mtRecv.tv_sec,mtRecv.tv_nsec,
+                    timespec_to_usec(&gcc->oldRecvTime),gcc->oldRecvTime.tv_sec,gcc->oldRecvTime.tv_nsec,
+                    timespec_to_usec(&mtSend),mtSend.tv_sec,mtSend.tv_nsec,
+                    timespec_to_usec(&gcc->oldSendTime),gcc->oldSendTime.tv_sec,gcc->oldSendTime.tv_nsec);
             fflush(gcc->out);
-            gcc->oldRecvTime = timespec_to_usec(&mtRecv);
-            gcc->oldSendTime = timespec_to_usec(&mtSend);
+            gcc->oldRecvTime = mtRecv;
+            gcc->oldSendTime = mtSend;
             int64_t diff = diffRecv - diffSend;
 
-            struct timespec curTime;
-            clock_gettime(CLOCK_REALTIME,&curTime);
-            gcc->packetsInGroups++;
-            if ( diff < 0 || ( timespec_to_usec(&curTime) - timespec_to_usec(&gcc->timeForPreFilter) ) > checkRtpTime )
-            {
-                if (gcc->fFirstPacketGroup)
-                {
-
-                    gcc->oldRecvGroupTime = gcc->oldRecvTime;
-                    clock_gettime(CLOCK_REALTIME,&gcc->timeForPreFilter);
-                    gcc->fFirstPacketGroup = false;
-
-                }
-                else {
 
 
-                    if((gcc->oldRecvTime - gcc->oldRecvGroupTime) != 0)
-                        tmpFMax = 1 / (gcc->oldRecvTime - gcc->oldRecvGroupTime);
-                    else
-                        tmpFMax = 0;
-
-                    gcc->fMax =  tmpFMax > gcc->fMax ? tmpFMax : gcc->fMax;
-                    gcc->oldRecvGroupTime = gcc->oldRecvTime;
-
-                  //  gcc->out << diff << "," << gcc->fMax << '\n';
-
-
-                    //                    outLogData  << diff << "," << packetsInGroups<< '\n';
-                    gcc->packetsInGroups = 0;
-                    //double alpha = pow((1 - chi),30 / (1000 * fMax));
-
-                    clock_gettime(CLOCK_REALTIME,&gcc->timeForPreFilter);
-                }
-
-            }
         }
         // КОнец пре фильтера.
     }

@@ -73,9 +73,9 @@ struct _GstGccAnalysis
     bool fForMeasTime = TRUE;
     bool fFirstPacketGroup = TRUE;
 
-    int64_t oldRecvTime;
-    int64_t oldSendTime;
-    int64_t oldRecvGroupTime;
+    struct timespec oldRecvTime;
+    struct timespec oldSendTime;
+    //int64_t oldRecvGroupTime;
 
     int64_t packetsInGroups = 0;
 

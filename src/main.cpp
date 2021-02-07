@@ -9,6 +9,7 @@
 #include <utility>
 #include <fstream>
 #include <cmath>
+#include <map>
 
 using namespace std;
 
@@ -167,7 +168,7 @@ bool linkRequestAndStaticPads(GstElement *sourse,GstElement *sink,gchar *nameSrc
 
 
 
-GstElement *create_pipeline(){//circular_buffer<pair<int64_t,double>> &buffer){
+GstElement *create_pipeline(map<string,string> &params){//circular_buffer<pair<int64_t,double>> &buffer){
 
     //queue<long long> rtpRecvTime;
     GstElement *pipeline,*udpSrcRtp,*videconverter,
@@ -224,13 +225,13 @@ GstElement *create_pipeline(){//circular_buffer<pair<int64_t,double>> &buffer){
 
 
     // Устанавливаю параметры для upd сойденений.
-    g_object_set(G_OBJECT(udpSrcRtcp),"address","127.0.0.1",NULL); // for localhost
+    g_object_set(G_OBJECT(udpSrcRtcp),"address",params["client"].c_str(),NULL); // for localhost
    // g_object_set(G_OBJECT(udpSrcRtcp),"address","192.168.2.2",NULL);
     g_object_set(G_OBJECT(udpSrcRtcp),"port",5001,NULL);
     g_object_set(G_OBJECT (udpSrcRtcp), "caps", gst_caps_from_string("application/x-rtcp"), NULL);
 
 
-   g_object_set(G_OBJECT(udpSinkRtcp),"host","127.0.0.1",NULL); // for localhost
+   g_object_set(G_OBJECT(udpSinkRtcp),"host",params["server"].c_str(),NULL); // for localhost
    //  g_object_set(G_OBJECT(udpSinkRtcp),"host","10.2.1.2",NULL);
     g_object_set(G_OBJECT(udpSinkRtcp),"port",5005,NULL);
     g_object_set(G_OBJECT(udpSinkRtcp),"sync",FALSE,NULL);
@@ -298,11 +299,28 @@ GstElement *create_pipeline(){//circular_buffer<pair<int64_t,double>> &buffer){
     return pipeline;
 
 }
+bool LoadParam(string fileName,map<string,string> &dict)
+{
+    ifstream in(fileName);
+    if (!in.is_open())
+    {
+        return false;
+    }
+    in >> dict["server"];
+    in >> dict["client"];
+    in.close();
+    return true;
+}
 
 int main(int argc, char *argv[])
 {
 
-
+    map<string,string> params;
+    if(!LoadParam("../config.conf",params))
+    {
+        cerr << "Not Found params!\n";
+        return -1;
+    }
     gst_init(&argc, &argv);
 
     GstRegistry *registry;
@@ -316,7 +334,7 @@ int main(int argc, char *argv[])
     GstBus *bus;
 
 
-    GstElement *pipeline = create_pipeline();
+    GstElement *pipeline = create_pipeline(params);
     if (pipeline == NULL)
     {
         cerr << "Error create pipeline!" << endl;
